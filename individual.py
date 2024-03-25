@@ -1,3 +1,4 @@
+import keras.models
 from keras.models import Sequential
 from keras.layers import Dense
 import numpy as np
@@ -8,11 +9,35 @@ class Individual:
     def __init__(self, input_dim):
         self.q = None
         self.input_dim = input_dim
-        self.model = Sequential()
-        self.model.add(Dense(units=self.input_dim, activation='sigmoid', input_dim=self.input_dim))
-        self.model.add(Dense(units=self.input_dim * 2, activation='sigmoid'))
-        self.model.add(Dense(units=1, activation='sigmoid'))
+        self.model = keras.models.load_model('model.keras')
         self.weights = self.model.get_weights()
+        self.vectorsize = input_dim * (2 * input_dim) + (2 * input_dim)
+        self.vector = []
+
+    def randomize_vector(self):
+        half_zeros = np.zeros(self.vectorsize // 2, dtype=int)
+        half_ones = np.ones(self.vectorsize // 2, dtype=int)
+        vector = np.concatenate((half_zeros, half_ones))
+        np.random.shuffle(vector)
+        self.vector = vector
+
+    def mask_weights(self):
+        self.weights = self.model.get_weights()
+        d = self.input_dim
+        dd = self.input_dim * 2
+        for i in range(d):
+            for j in range(dd):
+                self.weights[0][i][j] = self.weights[0][i][j] * self.vector[(i*d)+j]
+        for i in range(dd):
+            self.weights[2][i % dd][0] = self.weights[2][i % dd][0] * self.vector[i + (dd * d)]
+        return
+
+    def get_vector(self):
+        return self.vector
+
+    def set_vector(self, new_vector):
+        self.vector = new_vector
+        return
 
     def get_weights(self):
         return self.weights
@@ -34,11 +59,27 @@ class Individual:
         return
 
     def mutate(self, mutation_rate):
-        mutated_weights = []
-        mutation_function = lambda x, mutation_rate: x + np.random.normal(loc=0.0, scale=mutation_rate, size=x.shape)
-        for layer_weights in self.weights:
-            mutated_layer_weights = [mutation_function(w, mutation_rate) for w in layer_weights]
-            mutated_layer_weights = np.array(mutated_layer_weights)
-            mutated_weights.append(mutated_layer_weights)
-        self.weights = mutated_weights
+        for i in range(len(self.vector)):
+            if np.random.rand() < mutation_rate:
+                if self.vector[i]:
+                    self.vector[i] = 0
+                else:
+                    self.vector[i] = 1
         return
+
+    def get_model(self):
+        return self.model
+
+    def repair(self):
+        num_ones = np.sum(self.vector)
+        extra_ones = num_ones - (len(self.vector)/2)
+        if extra_ones > 0:
+            ones_indices = np.where(self.vector == 1)[0]
+            flip_indices = np.random.choice(ones_indices, int(abs(extra_ones)), replace=False)
+            self.vector[flip_indices] = 0
+        elif extra_ones < 0:
+            zero_indicies = np.where(self.vector == 0)[0]
+            flip_indices = np.random.choice(zero_indicies, int(abs(extra_ones)), replace=False)
+            self.vector[flip_indices] = 1
+
+
